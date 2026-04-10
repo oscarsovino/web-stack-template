@@ -11,7 +11,7 @@ export interface DialogProps {
   children: React.ReactNode
 }
 
-export interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type DialogContentProps = React.HTMLAttributes<HTMLDivElement>
 
 const DialogContext = React.createContext<{ onClose: () => void }>({ onClose: () => {} })
 
