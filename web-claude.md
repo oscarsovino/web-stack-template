@@ -29,6 +29,11 @@ Do NOT introduce alternative frameworks, state managers, CSS approaches, or comp
 6. Design tokens via CSS variables in `globals.css` + `@theme inline`
 7. TypeScript strict: no `@ts-ignore`, no `any`
 8. Vitest for unit/integration, Playwright for E2E
+9. Server actions: auth + ownership check on EVERY mutation, sanitize errors to client
+10. All list queries MUST have `.limit()` — default 200
+11. No `dangerouslySetInnerHTML` with DB content — use safe text rendering
+12. Optimistic updates MUST rollback on server action failure
+13. AI/copilot suggestions require visible disclaimer and explicit user acceptance
 
 ### Web Stack Spec
 Full specification: https://github.com/oscarsovino/web-stack-template/blob/main/SPEC.md

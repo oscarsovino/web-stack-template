@@ -1,7 +1,7 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.0.0
-> Fecha: 2026-04-04
+> Version: 1.1.0
+> Fecha: 2026-04-12
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
 ## 1. Objetivo
@@ -316,6 +316,77 @@ web/
 - Services lanzan errores, los consume el componente via TanStack Query `error` state
 - No try/catch en componentes — dejar que Query maneje el estado
 
+### 4.6 Server Actions (React 19)
+
+Server Actions (`"use server"`) son el patron preferido para mutaciones desde Server y Client Components.
+
+**Reglas de seguridad obligatorias:**
+
+1. **Auth en TODA mutacion:** Toda server action que modifica datos DEBE llamar a la funcion de auth del proyecto (ej. `getCurrentUserOrThrow()`) y usar el ID retornado en el query. Nunca confiar solo en RLS — defense in depth.
+
+```ts
+"use server"
+export async function updateItemAction(itemId: string, data: {...}) {
+  const userId = await getCurrentUserOrThrow()  // OBLIGATORIO
+  const { error } = await supabase
+    .from("items")
+    .update(data)
+    .eq("id", itemId)
+    .eq("user_id", userId)  // OBLIGATORIO — ownership check
+  // ...
+}
+```
+
+2. **Validacion con Zod en el entry point:** Validar shape, tipos, y limites antes de tocar la DB. UUID format, string maxlength, enum narrowing.
+
+3. **Sanitizar errores al cliente:** Nunca retornar `error.message` de Supabase al cliente — puede leakear nombres de tablas, constraints, o schema. Retornar mensajes genericos y logear el detalle con `console.error`.
+
+```ts
+// MAL:  return { ok: false, error: error.message }
+// BIEN: console.error("[action] failed", error)
+//       return { ok: false, error: "Error al guardar" }
+```
+
+4. **No `dangerouslySetInnerHTML` con contenido de DB:** Nunca renderizar HTML crudo que venga de base de datos. Usar text rendering seguro o un sanitizer (DOMPurify) si se necesita markup.
+
+### 4.7 Query Safety
+
+- **`.limit()` obligatorio** en toda query de lista. Default: `.limit(200)`. Queries sin limite pueden traer miles de filas en produccion.
+- Queries acotadas por ID (`.eq("id", x).single()`) no necesitan limit.
+- Queries con filtro de fecha (ej. "hoy") son aceptables sin limit si el rango es acotado.
+
+### 4.8 Optimistic Updates
+
+Para UI que necesita respuesta inmediata (chat, toggles, drag):
+
+1. Actualizar el estado local inmediatamente (optimista)
+2. Ejecutar el server action en `startTransition`
+3. **Si falla: rollback** — revertir el estado local y mostrar feedback de error
+4. Nunca dejar un update optimista sin handler de error
+
+```ts
+const handleSend = () => {
+  const optimistic = { id: `temp-${Date.now()}`, ...data }
+  setItems(prev => [...prev, optimistic])  // optimista
+
+  startTransition(async () => {
+    const res = await createItemAction(data)
+    if (!res.ok) {
+      setItems(prev => prev.filter(i => i.id !== optimistic.id))  // rollback
+      setError("No se pudo guardar")
+    }
+  })
+}
+```
+
+### 4.9 AI/Copilot Features
+
+Si la app incluye sugerencias generadas por IA o copilot:
+
+1. **Disclaimer visible:** Toda seccion con sugerencias de IA debe tener un texto permanente tipo "Sugerencias — no sustituyen el juicio profesional".
+2. **Framing no prescriptivo:** Usar "considera", "podria", "sugiere" — nunca "debes", "tienes que".
+3. **Human-in-the-loop:** Toda accion derivada de una sugerencia requiere aceptacion explicita del usuario.
+
 ## 5. Scripts npm
 
 ```json
@@ -357,3 +428,10 @@ SENTRY_AUTH_TOKEN=
 - [ ] Tests unitarios con Vitest
 - [ ] Tests E2E con Playwright
 - [ ] Sin dependencias no aprobadas
+- [ ] Server actions: auth + ownership en TODA mutacion
+- [ ] Server actions: errores sanitizados (no leakear schema)
+- [ ] Server actions: validacion Zod en el entry point
+- [ ] Queries de lista con `.limit()`
+- [ ] No `dangerouslySetInnerHTML` con contenido de DB
+- [ ] Optimistic updates con rollback en caso de error
+- [ ] AI features con disclaimer visible y framing no prescriptivo
