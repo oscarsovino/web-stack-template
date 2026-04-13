@@ -34,6 +34,12 @@ Do NOT introduce alternative frameworks, state managers, CSS approaches, or comp
 11. No `dangerouslySetInnerHTML` with DB content — use safe text rendering
 12. Optimistic updates MUST rollback on server action failure
 13. AI/copilot suggestions require visible disclaimer and explicit user acceptance
+14. SVG elements that will be exported to PNG: fill, stroke, textAnchor, dominantBaseline, fontSize MUST be inline SVG attributes (not only CSS class)
+15. Audit log utility is mandatory for mutations of sensitive data (append-only, never-throw design)
+16. CSV exports go through Route Handlers (/api/<domain>/export) with auth enforced
+17. Service types with joins use explicit `XxxWith<Y>` interfaces, not generic T with optionals
+18. Lists/tables/charts without data require explicit empty state UI
+19. Red Team review in 2 rounds for critical features (design + guardrails)
 
 ### Web Stack Spec
 Full specification: https://github.com/oscarsovino/web-stack-template/blob/main/SPEC.md

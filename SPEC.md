@@ -1,7 +1,7 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.1.0
-> Fecha: 2026-04-12
+> Version: 1.2.0
+> Fecha: 2026-04-13
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
 ## 1. Objetivo
@@ -387,6 +387,215 @@ Si la app incluye sugerencias generadas por IA o copilot:
 2. **Framing no prescriptivo:** Usar "considera", "podria", "sugiere" — nunca "debes", "tienes que".
 3. **Human-in-the-loop:** Toda accion derivada de una sugerencia requiere aceptacion explicita del usuario.
 
+### 4.10 SVG Export to PNG
+
+Si la app exporta contenido que mezcla HTML + SVG (canvas, graficos, diagramas) a PNG via `html-to-image` o similares:
+
+**Regla critica:** todo atributo SVG que afecte el rasterizado DEBE ir como atributo inline del elemento React, NO solo como regla CSS. Las librerias serializan via `foreignObject` con `getComputedStyle`, pero pierden los defaults SVG y los `text-anchor`/`dominant-baseline` no siempre se respetan.
+
+**Checklist obligatorio en elementos SVG que vayan a exportarse:**
+
+- `<path>` → `fill="none"` inline (sin esto, Bezier curves se rellenan de negro)
+- `<path>` stroke → color literal inline (no `var(--...)` que no resuelve)
+- `<rect>` → `fill` y `stroke` literales inline
+- `<text>` → `textAnchor`, `dominantBaseline`, `fontSize`, `fontWeight` como props, no solo CSS
+- `<marker>` → `markerUnits="userSpaceOnUse"` (sin esto escalan con stroke-width y colapsan)
+
+**Patron de export function:**
+
+```ts
+export async function exportAsPng(el: HTMLElement, filename: string) {
+  // Guardar estado
+  const orig = { transform: el.style.transform, transition: el.style.transition }
+  try {
+    // 1. Agregar clase .exporting que neutraliza efectos en TODOS los descendientes
+    //    (box-shadow, filter, backdrop-filter se vuelven bloques negros)
+    el.classList.add("exporting")
+    el.style.transition = "none"
+    // 2. Reset transform para capturar tamano natural, no el zoom/pan actual
+    el.style.transform = "translate(0px, 0px) scale(1)"
+    await new Promise(r => requestAnimationFrame(() => r(null)))
+
+    const dataUrl = await toPng(el, {
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+      cacheBust: true,
+      style: { filter: "none", boxShadow: "none", transform: "none" },
+      filter: (node) => {
+        // Excluir elementos UI no relevantes (hit-areas invisibles, overlays, etc.)
+        const el = node as Element
+        if (!el.classList) return true
+        return !["hit-area", "overlay-ui"].some(c => el.classList.contains(c))
+      },
+    })
+    // trigger download...
+  } finally {
+    el.classList.remove("exporting")
+    Object.assign(el.style, orig)
+  }
+}
+```
+
+**CSS para neutralizar efectos en descendientes:**
+
+```css
+.exporting,
+.exporting *,
+.exporting *::before,
+.exporting *::after {
+  box-shadow: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  text-shadow: none !important;
+}
+```
+
+**Anti-patrones que causan bloques negros en PNG:**
+
+- `stroke="transparent"` en paths de hit-area → se renderiza NEGRO opaco. Excluir del filter.
+- `paint-order: stroke fill` con halo blanco → interpretado como stroke negro. Usar `<rect>` de fondo.
+- `box-shadow` en nodos → bloques negros. Usar clase `.exporting`.
+
+**Si html-to-image falla estructuralmente**, considerar `html2canvas-pro` (no usa `foreignObject`, compatible con Tailwind v4 `oklch`).
+
+### 4.11 Audit Logging Utility
+
+Para apps con datos sensibles (salud, financieros, legal) crear `lib/audit.ts` con una utility never-throw que loguea accesos y mutaciones criticas a una tabla `audit_logs`:
+
+```ts
+// lib/audit.ts
+export type AuditAction = "session.create" | "payment.register" | ...
+export async function auditLog(params: {
+  userId: string
+  action: AuditAction
+  resourceType: string
+  resourceId: string
+  details?: Record<string, unknown>
+}): Promise<void> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    await supabase.from("audit_logs").insert({ ... })
+  } catch (err) {
+    // Audit logging NUNCA debe romper el flujo principal
+    console.error("[audit] log failed", err)
+  }
+}
+```
+
+**Reglas:**
+- Tabla `audit_logs` append-only con `REVOKE UPDATE, DELETE`
+- RLS `for insert with check (user_id = current_user_id())`
+- Indexes en `user_id`, `action`, `created_at desc`
+- Para mayor garantia: hash chain (cada row incluye hash del row previo) + backup WORM externo
+- Llamar desde server actions criticos DESPUES de la mutacion exitosa
+- Nunca logear prompts/responses completos sin evaluar PHI retention policy
+
+### 4.12 CSV Export via Route Handler
+
+Patron consistente para exportar reportes a CSV:
+
+```ts
+// app/api/<domain>/export/route.ts
+export async function GET(req: NextRequest) {
+  try {
+    const userId = await getCurrentUserOrThrow()
+    const { searchParams } = new URL(req.url)
+    const type = searchParams.get("type") ?? "default"
+    const from = searchParams.get("from") ?? undefined
+    const to = searchParams.get("to") ?? undefined
+
+    const rows = await fetchRows(userId, { type, from, to })
+    const csv = buildCSV([HEADER, ...rows])
+
+    return new NextResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${type}-${from ?? "all"}.csv"`,
+      },
+    })
+  } catch (err) {
+    console.error("[export] failed", err)
+    return NextResponse.json({ error: "Export failed" }, { status: 500 })
+  }
+}
+
+function escapeCSV(v: unknown): string {
+  if (v == null) return ""
+  const s = String(v)
+  if (/[",\n;]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+function buildCSV(rows: string[][]): string {
+  return rows.map(r => r.map(escapeCSV).join(",")).join("\n")
+}
+```
+
+**Reglas:**
+- El route handler enforcea auth (no delegar a middleware solamente)
+- Pre-calcular dimensiones en JS (no depender de formato Excel-specific)
+- Escape correcto de comillas, comas, saltos de linea, punto y coma
+- UTF-8 con BOM si target de Excel en Windows: `"\uFEFF" + csv`
+- Dar nombre de archivo descriptivo con fechas en el filename
+
+### 4.13 Service Types con Joins
+
+Cuando un service retorna entidades enriquecidas con data de otras tablas, definir interfaces explicitas `XxxWith<Y>` que extiendan la entidad base:
+
+```ts
+// services/invoices-service.ts
+export interface InvoiceWithPatient extends Invoice {
+  patient: { id: string; full_name: string } | null
+  items_count: number
+  paid_amount: number
+}
+
+export interface InvoiceDetail extends Invoice {
+  patient: { id: string; full_name: string } | null
+  items: InvoiceItem[]
+  payments: Array<{ id: string; amount: number; paid_at: string }>
+}
+
+export const invoicesService = {
+  async list(userId: string): Promise<InvoiceWithPatient[]> { ... },
+  async getById(userId: string, id: string): Promise<InvoiceDetail | null> { ... },
+}
+```
+
+**Reglas:**
+- Tipos especificos por vista/uso (list vs detail), no uno genirico con opcionales
+- Exportar desde `services/index.ts`
+- Evitar `XxxWith` dentro de componentes UI — pasarlo via props tipadas
+- Supabase TS a veces infiere joins como arrays — castear via `unknown as ExpectedType` con comentario
+
+### 4.14 Empty State Handling
+
+Toda vista de lista, tabla o grafico DEBE manejar explicitamente el caso sin datos con un componente `.empty-state` o similar:
+
+```tsx
+{rows.length === 0 ? (
+  <div className="empty-state">
+    <Icon style={{ opacity: 0.4 }} />
+    <div>No hay registros para los filtros seleccionados.</div>
+    <Link href="/new">Crear el primero</Link>
+  </div>
+) : (
+  <Table data={rows} />
+)}
+```
+
+Tambien para charts con toda la data en cero y para endpoints que retornan `[]`.
+
+### 4.15 Red Team Review Iterativo
+
+Para features con alta sensibilidad (PHI, dinero, IA) aplicar Red Team en **dos rondas minimas**:
+
+**Ronda 1 (sobre el diseno):** antes de escribir codigo, documentar en ADR y lanzar 3 ejes paralelos (seguridad, arquitectura, dominio/clinico/legal). Los blockers se incorporan al ADR antes de F0.
+
+**Ronda 2 (sobre los guardrails):** despues de disenar las mitigaciones, lanzar Red Team otra vez para atacar cada guardrail especificamente. Suele descubrir que los guardrails son performativos (regex bypasseable, hash chain no tamper-evident, etc.).
+
+Sin la segunda ronda, se implementan mitigaciones que dan falsa sensacion de seguridad. Con la segunda ronda se descubren problemas estructurales que requieren rediseno (ej. reemplazar hash chain interno por notarizacion externa).
+
 ## 5. Scripts npm
 
 ```json
@@ -435,3 +644,9 @@ SENTRY_AUTH_TOKEN=
 - [ ] No `dangerouslySetInnerHTML` con contenido de DB
 - [ ] Optimistic updates con rollback en caso de error
 - [ ] AI features con disclaimer visible y framing no prescriptivo
+- [ ] Export SVG/PNG: atributos SVG inline (fill, stroke, textAnchor), no solo CSS
+- [ ] Audit log para mutaciones criticas (append-only, never-throw)
+- [ ] CSV export via Route Handler con auth enforced
+- [ ] Service types con joins via interfaces `XxxWith<Y>` explicitas
+- [ ] Empty state handling en toda lista/tabla/chart
+- [ ] Red Team en 2 rondas para features criticas (diseno + guardrails)
