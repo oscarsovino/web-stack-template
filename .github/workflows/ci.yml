@@ -29,6 +29,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
       - name: Build
         run: npm run build
         env:
@@ -59,6 +65,9 @@ jobs:
           test -f /tmp/smoke-project/web/package-lock.json
           test -f /tmp/smoke-project/web/.nvmrc
           test -f /tmp/smoke-project/web/.npmrc
+          test -f /tmp/smoke-project/web/src/lib/env.ts
+          test -f /tmp/smoke-project/web/src/app/error.tsx
+          test -f /tmp/smoke-project/web/src/app/loading.tsx
           grep -q '"name": "smoke-project"' /tmp/smoke-project/web/package.json
           ! grep -q '"\^' /tmp/smoke-project/web/package.json
 
