@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.6.0
+> Version: 1.7.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -797,7 +797,64 @@ Orden de operaciones:
 
 Si el proyecto destino es un monorepo con `@aldia/shared-tokens` / `@aldia/shared-i18n`, los presets pueden consumir esos packages (o usar fallback local). Eso es decision del PR de la app concreta.
 
-## 11. Checklist de conformidad
+## 11. Init flow y doctor
+
+### 11.1 Prereq checks del init script
+
+Antes de cualquier operacion, `init-web-stack.sh` valida:
+
+- `node` presente y major 22 (coincide con `engines.node` del template).
+- `tar`, `sed`, `grep` presentes (los usa para overlay de files y reemplazo de placeholders).
+
+Si alguno falla el script aborta con mensaje actionable.
+
+### 11.2 Prompts interactivos
+
+El script pregunta:
+
+1. `App title` (usa en metadata y manifest).
+2. `App description` (idem).
+3. `NEXT_PUBLIC_SUPABASE_URL` (opcional — Enter salta).
+4. `NEXT_PUBLIC_SUPABASE_ANON_KEY` (opcional — Enter salta).
+5. `NEXT_PUBLIC_APP_URL` (default `http://localhost:3000`).
+6. `Install npm dependencies now? [y/N]`.
+
+Si (3) y (4) llegan vacios no se crea `.env.local` y el summary instruye al usuario a rellenarlo manualmente. Si vienen con valor, se escribe `.env.local` con las tres variables; subsiguientes re-runs no sobrescriben un `.env.local` ya presente.
+
+### 11.3 Supabase gen types (opcional)
+
+Si el `supabase` CLI esta instalado y el URL de Supabase tiene la forma `https://<ref>.supabase.co`, el script ofrece correr:
+
+```
+supabase gen types typescript --project-id <ref> > src/lib/supabase/database.types.ts
+```
+
+Requiere `supabase login` previo (access token). Si el CLI no esta instalado el script imprime las instrucciones para hacerlo despues sin fallar.
+
+### 11.4 Deteccion de monorepo
+
+Si el `package.json` del directorio padre declara `workspaces`, el script imprime un aviso con los packages disponibles (`packages/*`). El proyecto generado puede importar de ellos inmediatamente (los paths estan wirados en `tsconfig.json` del workspace root).
+
+### 11.5 Comando doctor
+
+`npm run doctor` en el proyecto generado corre en secuencia:
+
+```
+npm run typecheck
+npm run format:check
+npm run lint
+npm run check-spec
+npm run test
+```
+
+Es el comando canonico para validar conformancia con el SPEC antes de un PR o tras un pull de cambios grandes. CI del template lo usa tanto sobre `template/` como sobre los proyectos generados en los smoke tests.
+
+### 11.6 CI smoke tests del init
+
+- `init-script-check` matrix sobre `[none, admin, consumer]`: ejecuta el init con env prompts vacios, verifica presencia de archivos base y especificos por preset, corre `doctor` contra el proyecto generado.
+- `init-script-env-prompts`: ejecuta el init con prompts de Supabase rellenados y verifica que `.env.local` contiene las tres variables esperadas.
+
+## 12. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores

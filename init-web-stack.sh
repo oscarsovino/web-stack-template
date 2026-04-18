@@ -1,11 +1,15 @@
 #!/bin/bash
-# Web Stack Template Initializer v1.6
+# Web Stack Template Initializer v1.7
 # Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh) [target-dir] [--preset=admin|consumer|none]
 # Or from cloned repo: ./init-web-stack.sh [target-dir] [--preset=admin|consumer|none]
 
 set -e
 
-# Require Node 22.x so the generated project matches the pinned engines field
+# ----------------------------------------------------------
+# Prerequisite checks
+# ----------------------------------------------------------
+
+# Node 22.x required so the generated project matches the pinned engines field
 if command -v node >/dev/null 2>&1; then
     NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
     if [ "$NODE_MAJOR" != "22" ]; then
@@ -17,6 +21,14 @@ else
     echo "Error: node not found in PATH."
     exit 1
 fi
+
+# tar is required to overlay files without leaking dev artifacts
+for cmd in tar sed grep; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: $cmd not found in PATH."
+        exit 1
+    fi
+done
 
 PROJECT_DIR=$(pwd)
 PROJECT_NAME=$(basename "$PROJECT_DIR")
@@ -62,7 +74,7 @@ copy_template_clean() {
         -cf - .) | (cd "$WEB_DIR" && tar -xf -)
 }
 
-echo "Web Stack Template v1.6 (presets)"
+echo "Web Stack Template v1.7 (env + doctor)"
 echo "Project: $PROJECT_NAME"
 echo "Target:  $WEB_DIR/"
 echo "Preset:  $PRESET"
@@ -221,6 +233,69 @@ fi
 echo "Configured: $APP_TITLE ($PKG_NAME)"
 
 # ============================================================
+# STEP 2.5: Supabase credentials -> .env.local
+# ============================================================
+
+echo ""
+echo "Supabase credentials (press Enter to skip any field; .env.local is created only if URL and key are provided)."
+read -p "NEXT_PUBLIC_SUPABASE_URL: " SUPABASE_URL
+read -p "NEXT_PUBLIC_SUPABASE_ANON_KEY: " SUPABASE_KEY
+read -p "NEXT_PUBLIC_APP_URL [http://localhost:3000]: " APP_URL
+APP_URL="${APP_URL:-http://localhost:3000}"
+
+if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ]; then
+    ENV_LOCAL="$WEB_DIR/.env.local"
+    if [ -f "$ENV_LOCAL" ]; then
+        echo ".env.local already exists; leaving it untouched."
+    else
+        cat > "$ENV_LOCAL" <<ENV
+NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_KEY
+NEXT_PUBLIC_APP_URL=$APP_URL
+ENV
+        echo "[CREATED] $ENV_LOCAL"
+    fi
+
+    # Offer to generate Supabase TypeScript types if the CLI is installed.
+    if command -v supabase >/dev/null 2>&1; then
+        # Extract project ref from URL like https://<ref>.supabase.co
+        PROJECT_REF=$(echo "$SUPABASE_URL" | sed -nE 's|https?://([^.]+)\.supabase\.co.*|\1|p')
+        if [ -n "$PROJECT_REF" ]; then
+            read -p "Generate Supabase types from project $PROJECT_REF? [y/N] " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                mkdir -p "$WEB_DIR/src/lib/supabase"
+                if supabase gen types typescript --project-id "$PROJECT_REF" > "$WEB_DIR/src/lib/supabase/database.types.ts" 2>/dev/null; then
+                    echo "[CREATED] $WEB_DIR/src/lib/supabase/database.types.ts"
+                else
+                    echo "Note: supabase gen types failed. Run 'supabase login' first, then: supabase gen types typescript --project-id $PROJECT_REF > $WEB_DIR/src/lib/supabase/database.types.ts"
+                fi
+            fi
+        fi
+    else
+        echo "Note: 'supabase' CLI not installed. Skip type generation. To add it later: npm i -g supabase, then 'supabase login' and run 'supabase gen types typescript --project-id <ref> > $WEB_DIR/src/lib/supabase/database.types.ts'."
+    fi
+else
+    echo "Skipped .env.local (fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY manually)."
+fi
+
+# ============================================================
+# STEP 2.6: Detect monorepo context
+# ============================================================
+
+if [ -f "$PROJECT_DIR/package.json" ] && node -e "const p=require('$PROJECT_DIR/package.json'); process.exit(Array.isArray(p.workspaces) || (p.workspaces && p.workspaces.packages) ? 0 : 1)" 2>/dev/null; then
+    echo ""
+    echo "Detected npm workspace at $PROJECT_DIR."
+    if [ -d "$PROJECT_DIR/packages" ]; then
+        AVAILABLE=$(ls "$PROJECT_DIR/packages" 2>/dev/null | head -10 | tr '\n' ' ')
+        if [ -n "$AVAILABLE" ]; then
+            echo "Available workspace packages under packages/: $AVAILABLE"
+            echo "You can import from @aldia/* (or your workspace scope) inside $WEB_DIR/."
+        fi
+    fi
+fi
+
+# ============================================================
 # STEP 3: Inject CLAUDE.md block
 # ============================================================
 
@@ -306,7 +381,7 @@ fi
 # ============================================================
 
 echo ""
-echo "Web Stack Template v1.0 initialized in $WEB_DIR/"
+echo "Web Stack Template v1.7 initialized in $WEB_DIR/ (preset: $PRESET)"
 echo ""
 echo "Stack:"
 echo "  Next.js 16 + React 19 + TypeScript strict"
@@ -325,9 +400,13 @@ echo "  Route protection (proxy.ts)"
 echo "  Design tokens (CSS variables)"
 echo ""
 echo "Next steps:"
-echo "  1. Copy .env.example to .env.local and fill in Supabase credentials"
+if [ ! -f "$WEB_DIR/.env.local" ]; then
+    echo "  1. Copy .env.example to .env.local and fill in Supabase credentials"
+else
+    echo "  1. Review .env.local (generated from prompts)"
+fi
 echo "  2. Customize design tokens in src/app/globals.css"
-echo "  3. Add your routes and services"
+echo "  3. Run: cd $WEB_DIR && npm run doctor   # typecheck + format:check + lint + check-spec + test"
 echo "  4. Run: cd $WEB_DIR && npm run dev"
 echo ""
 echo "Spec: https://github.com/oscarsovino/web-stack-template/blob/main/SPEC.md"
