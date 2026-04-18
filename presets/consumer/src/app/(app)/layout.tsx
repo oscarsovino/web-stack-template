@@ -1,5 +1,9 @@
 import Link from "next/link"
 
+// Authenticated consumer routes read user-scoped data; never let Next cache them
+// statically across users. SPEC section 12.
+export const dynamic = "force-dynamic"
+
 /**
  * Consumer layout: bottom tabs on mobile viewport, top nav on desktop.
  * Customize tab items for your app.

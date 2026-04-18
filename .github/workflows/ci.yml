@@ -85,9 +85,14 @@ jobs:
           test -f "$project/src/app/(app)/layout.tsx"
           test -f "$project/public/manifest.json"
           test -f "$project/src/lib/theme/theme-provider.tsx"
-          grep -q '"next-intl"' "$project/package.json"
+          test -f "$project/src/lib/i18n/config.ts"
+          test -f "$project/src/lib/i18n/provider.tsx"
+          grep -q '"i18next"' "$project/package.json"
+          grep -q '"react-i18next"' "$project/package.json"
+          ! grep -q '"next-intl"' "$project/package.json"
           grep -q 'data-theme="dark"' "$project/src/app/globals.css"
           grep -q '"name": "Smoke App"' "$project/public/manifest.json"
+          grep -q 'force-dynamic' "$project/src/app/(app)/layout.tsx"
 
       - name: Verify admin preset overlay
         if: matrix.preset == 'admin'
@@ -96,6 +101,25 @@ jobs:
           test -f "$project/src/app/(dashboard)/layout.tsx"
           grep -q '"recharts"' "$project/package.json"
           grep -q 'disallow' "$project/src/app/robots.ts"
+          grep -q 'force-dynamic' "$project/src/app/(dashboard)/layout.tsx"
+
+      - name: Verify check-spec rejects force-static in auth route groups
+        if: matrix.preset != 'none'
+        run: |
+          project=/tmp/smoke-${{ matrix.preset }}/web
+          # Pick the right route group per preset.
+          if [ "${{ matrix.preset }}" = "consumer" ]; then
+            offender="$project/src/app/(app)/_force-static-probe.tsx"
+          else
+            offender="$project/src/app/(dashboard)/_force-static-probe.tsx"
+          fi
+          printf 'export const dynamic = "force-static"\nexport default function Probe() { return null }\n' > "$offender"
+          if (cd "$project" && npm run check-spec); then
+            echo "FAIL: check-spec should have rejected force-static under the auth route group"
+            rm -f "$offender"
+            exit 1
+          fi
+          rm -f "$offender"
 
       - name: Install (strict for none, flexible for presets)
         run: |

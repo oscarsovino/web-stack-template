@@ -27,6 +27,21 @@ if grep -rnE 'process\.env\.NEXT_PUBLIC_' src \
     errors=$((errors + 1))
 fi
 
+# 3. Authenticated route groups must not force-static.
+#    Routes under (app)/, (dashboard)/, (user)/ read user-scoped data; caching them
+#    statically would serve one user's HTML to another. Default is force-dynamic
+#    (set at the layout level); this check catches accidental overrides.
+for group in '(app)' '(dashboard)' '(user)'; do
+    # shellcheck disable=SC2086 -- globbing is intentional
+    offenders=$(grep -rnE '(export const dynamic\s*=\s*["'\'']force-static["'\'']|export const dynamic\s*=\s*["'\'']static["'\''])' \
+                   "src/app/$group" 2>/dev/null || true)
+    if [ -n "$offenders" ]; then
+        echo "$offenders"
+        echo "error: force-static is forbidden under src/app/$group (authenticated routes). Remove the override or move the route out of the group. (SPEC §12)"
+        errors=$((errors + 1))
+    fi
+done
+
 if [ "$errors" -gt 0 ]; then
     exit 1
 fi
