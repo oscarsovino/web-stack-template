@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.3.0
+> Version: 1.4.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -660,7 +660,44 @@ Toda app inicializada desde este template debe ser bit-for-bit reproducible entr
 - Verifica que Node major sea 22 antes de copiar archivos; aborta si no.
 - Copia explicita de archivos dotfile (`.nvmrc`, `.npmrc`, `.env.example`, `.gitignore`) y `package-lock.json` al proyecto destino.
 
-## 8. Checklist de conformidad
+## 8. Env validation, seguridad y accesibilidad
+
+### 8.1 Validacion de variables de entorno
+
+Toda variable `NEXT_PUBLIC_*` debe validarse al arranque con Zod en `src/lib/env.ts`. El modulo:
+
+- Declara un schema Zod con los campos requeridos y sus formatos (`z.string().url()`, `z.string().min(1)`).
+- Invoca `safeParse` pasando las variables **referenciadas explicitamente** por nombre (no `...process.env`) para que Next.js las inline en el bundle cliente.
+- Lanza un `Error` con los field errors si la validacion falla. El fallo es fail-fast: la app no arranca con env invalido.
+- Todo consumidor (clientes Supabase, proxy) importa desde `@/lib/env`. Queda prohibido leer `process.env.NEXT_PUBLIC_*` directo.
+
+### 8.2 Security headers
+
+`next.config.ts` define `headers()` aplicando a todas las rutas:
+
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+
+Content-Security-Policy con nonces se difiere a un PR posterior porque requiere generacion por-request en `proxy.ts` y cambios coordinados en markup.
+
+### 8.3 Error boundaries y loading states
+
+- `src/app/global-error.tsx`: boundary global (ya existente).
+- `src/app/error.tsx`: boundary por ruta con `role="alert"` y `aria-live="assertive"`. Registra el error en consola; no filtra detalles al usuario.
+- `src/app/loading.tsx`: skeleton con `role="status"`, `aria-live="polite"`, `aria-busy="true"` y `span.sr-only`.
+- Cada route group (`(auth)`, `(user)`, `(public)`, `dashboard`) puede override si necesita UX propia.
+
+### 8.4 Accesibilidad
+
+- `eslint-plugin-jsx-a11y` con ruleset `recommended` (full, no el subset de `next/core-web-vitals`).
+- Primitivas UI (`Label`, `Dialog`, etc.) pasan lint limpio. Cualquier disable requiere comentario con justificacion.
+- `<html lang="...">` obligatorio en layouts raiz y en `global-error.tsx`.
+- Dialog: `role="dialog"`, `aria-modal="true"`, backdrop clickable como `<button>` con `aria-label`, Escape cierra, focus trap queda pendiente para componente de menu-radix o patron futuro.
+
+## 9. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores
