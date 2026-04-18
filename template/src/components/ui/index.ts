@@ -10,23 +10,9 @@ export type { InputProps } from "./input"
 export { Select } from "./select"
 export type { SelectProps } from "./select"
 
-export {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "./table"
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./table"
 
-export {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "./card"
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./card"
 
 export { Spinner, spinnerVariants } from "./spinner"
 export type { SpinnerProps } from "./spinner"

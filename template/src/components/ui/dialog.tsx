@@ -73,14 +73,15 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
 DialogContent.displayName = "DialogContent"
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
+  return (
+    <div
+      className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
 }
 
-function DialogTitle({
-  className,
-  children,
-  ...props
-}: React.HTMLAttributes<HTMLHeadingElement>) {
+function DialogTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2 className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props}>
       {children}
@@ -93,7 +94,15 @@ function DialogDescription({ className, ...props }: React.HTMLAttributes<HTMLPar
 }
 
 function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4", className)} {...props} />
+  return (
+    <div
+      className={cn(
+        "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4",
+        className,
+      )}
+      {...props}
+    />
+  )
 }
 
 function DialogClose({ onClose, className }: { onClose: () => void; className?: string }) {
@@ -112,4 +121,12 @@ function DialogClose({ onClose, className }: { onClose: () => void; className?: 
   )
 }
 
-export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose }
+export {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+}

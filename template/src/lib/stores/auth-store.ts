@@ -9,7 +9,12 @@ interface AuthState {
   isAdmin: boolean
   isLoading: boolean
   isAuthenticated: boolean
-  setUser: (userId: string, email: string, fullName: string | null, avatarUrl?: string | null) => void
+  setUser: (
+    userId: string,
+    email: string,
+    fullName: string | null,
+    avatarUrl?: string | null,
+  ) => void
   setRoles: (roles: string[]) => void
   hasRole: (role: string) => boolean
   clear: () => void
@@ -27,8 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   setUser: (userId, email, fullName, avatarUrl = null) =>
     set({ userId, email, fullName, avatarUrl, isAuthenticated: true }),
-  setRoles: (roles) =>
-    set({ roles, isAdmin: roles.includes("admin") }),
+  setRoles: (roles) => set({ roles, isAdmin: roles.includes("admin") }),
   hasRole: (role) => get().roles.includes(role),
   clear: () =>
     set({

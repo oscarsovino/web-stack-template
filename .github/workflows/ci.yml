@@ -29,8 +29,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Format check
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
+
+      - name: SPEC conformance check
+        run: npm run check-spec
 
       - name: Unit tests
         run: npm run test
@@ -65,13 +71,22 @@ jobs:
           test -f /tmp/smoke-project/web/package-lock.json
           test -f /tmp/smoke-project/web/.nvmrc
           test -f /tmp/smoke-project/web/.npmrc
+          test -f /tmp/smoke-project/web/.prettierrc.json
+          test -f /tmp/smoke-project/web/.prettierignore
+          test -f /tmp/smoke-project/web/.husky/pre-commit
+          test -x /tmp/smoke-project/web/scripts/check-spec.sh
           test -f /tmp/smoke-project/web/src/lib/env.ts
           test -f /tmp/smoke-project/web/src/app/error.tsx
           test -f /tmp/smoke-project/web/src/app/loading.tsx
           grep -q '"name": "smoke-project"' /tmp/smoke-project/web/package.json
           ! grep -q '"\^' /tmp/smoke-project/web/package.json
 
-      - name: Verify lockfile is consumable (npm ci)
+      - name: Verify generated project passes all checks (as a downstream user would)
         run: |
           cd /tmp/smoke-project/web
           npm ci
+          npm run typecheck
+          npm run format:check
+          npm run lint
+          npm run check-spec
+          npm run test
