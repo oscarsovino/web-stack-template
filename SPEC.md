@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.5.0
+> Version: 1.6.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -733,7 +733,71 @@ Añade mas chequeos aqui cuando surja un patron que ESLint no cubra.
 - `.husky/pre-commit` ejecuta `lint-staged` y luego `check-spec`. Si alguno falla, el commit aborta.
 - Los hooks solo se instalan si el repo esta inicializado con git; en CI los verificamos ejecutando `npm run lint && npm run format:check && npm run check-spec` directamente.
 
-## 10. Checklist de conformidad
+## 10. Presets (admin vs consumer)
+
+Un solo core + presets copiables. El core esta completo y es el denominador comun; los presets son snapshots documentados que se superponen al copiarse.
+
+### 10.1 Filosofia
+
+- **Un core, un historial**: bugfixes y upgrades al stack tocan `template/` y ambos presets los heredan al re-inicializar.
+- **Presets son overlays, no forks**: cada preset en `presets/<name>/` define solo lo que DIFIERE del core.
+- **Documentacion por preset**: cada `presets/<name>/README.md` lista que agrega y que reemplaza.
+
+### 10.2 Estructura
+
+```
+presets/
+├── admin/
+│   ├── README.md
+│   ├── package.json.extra        (deps a mergear en el package.json del core)
+│   ├── globals.css.extra         (se agrega al final de src/app/globals.css)
+│   └── src/
+│       ├── app/(dashboard)/layout.tsx
+│       ├── app/robots.ts         (Disallow: /)
+│       └── lib/stores/auth-store.ts  (role + agent)
+└── consumer/
+    ├── README.md
+    ├── package.json.extra        (next-intl)
+    ├── globals.css.extra         (light + dark CSS vars)
+    ├── public/manifest.json      (PWA)
+    └── src/
+        ├── app/(app)/layout.tsx  (navbar bottom mobile + top desktop)
+        ├── app/robots.ts         (Allow: /)
+        ├── lib/stores/auth-store.ts  (profile + theme + language)
+        └── lib/theme/            (theme-provider + use-theme hook)
+```
+
+### 10.3 Init con preset
+
+```bash
+bash init-web-stack.sh web --preset=consumer
+bash init-web-stack.sh web --preset=admin
+bash init-web-stack.sh web --preset=none   # core only (default)
+```
+
+Orden de operaciones:
+1. Copia el core (`template/`) al directorio destino.
+2. Si `--preset != none`: overlays desde `presets/<name>/` (tar-based, excluye node_modules).
+3. Mergea `package.json.extra` (via Node) hoisting dependencies y sort alphabetical.
+4. Apendea `globals.css.extra` al `src/app/globals.css` del destino.
+5. Reemplaza placeholders (`__APP_TITLE__`, `__APP_DESCRIPTION__`, `__PROJECT_NAME__`) en `src/`, `public/` y `package.json`/`package-lock.json`.
+6. Al instalar: `npm ci` si es core (`none`); `npm install` si es preset (lockfile cambia al mergear deps extra). En este ultimo caso el output trae un lockfile regenerado que se committea en el primer PR.
+
+### 10.4 Diferencias clave
+
+| Aspecto | Core | Admin | Consumer |
+|---|---|---|---|
+| Layout root | Neutral | Sidebar en `(dashboard)` | Navbar en `(app)` |
+| Auth store | `userId`, `email` | + `role`, `agent` | + `profile`, `theme`, `language` |
+| robots.ts | Allow `/` | Disallow `/` | Allow `/` + sitemap |
+| Dark mode | No | No | Si (CSS vars `:root` + `:root[data-theme=dark]`) |
+| Deps extra | — | `recharts` | `next-intl` |
+| PWA manifest | No | No | Si (`public/manifest.json`) |
+| i18n | No | No | Via next-intl (opcional, listo para wirear) |
+
+Si el proyecto destino es un monorepo con `@aldia/shared-tokens` / `@aldia/shared-i18n`, los presets pueden consumir esos packages (o usar fallback local). Eso es decision del PR de la app concreta.
+
+## 11. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores

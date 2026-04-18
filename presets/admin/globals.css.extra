@@ -1,0 +1,13 @@
+/* Admin preset design tokens. Single theme, no dark mode by default. */
+
+:root {
+  --color-primary: #1d4ed8;
+  --color-background: #f9fafb;
+  --color-background-secondary: #ffffff;
+  --color-text: #111827;
+  --color-text-dim: #4b5563;
+  --color-border: #e5e7eb;
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+}
