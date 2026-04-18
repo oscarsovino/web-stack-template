@@ -1,5 +1,5 @@
 #!/bin/bash
-# Web Stack Template Initializer v1.7
+# Web Stack Template Initializer v1.8
 # Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh) [target-dir] [--preset=admin|consumer|none]
 # Or from cloned repo: ./init-web-stack.sh [target-dir] [--preset=admin|consumer|none]
 
@@ -74,7 +74,7 @@ copy_template_clean() {
         -cf - .) | (cd "$WEB_DIR" && tar -xf -)
 }
 
-echo "Web Stack Template v1.7 (env + doctor)"
+echo "Web Stack Template v1.8 (red-team mitigations)"
 echo "Project: $PROJECT_NAME"
 echo "Target:  $WEB_DIR/"
 echo "Preset:  $PRESET"
@@ -381,7 +381,7 @@ fi
 # ============================================================
 
 echo ""
-echo "Web Stack Template v1.7 initialized in $WEB_DIR/ (preset: $PRESET)"
+echo "Web Stack Template v1.8 initialized in $WEB_DIR/ (preset: $PRESET)"
 echo ""
 echo "Stack:"
 echo "  Next.js 16 + React 19 + TypeScript strict"

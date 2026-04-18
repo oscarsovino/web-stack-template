@@ -1,5 +1,9 @@
 import Link from "next/link"
 
+// Authenticated dashboard routes read user-scoped data; never let Next cache
+// them statically across users. SPEC section 12.
+export const dynamic = "force-dynamic"
+
 /**
  * Admin layout stub: persistent sidebar.
  * Customize section items and role filtering for your org.

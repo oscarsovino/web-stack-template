@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.7.0
+> Version: 1.8.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -286,8 +286,14 @@ web/
 - Un archivo por entidad: `[entity]-service.ts`
 - Exporta un objeto con metodos async (no clase, no ORM)
 - Cada metodo crea su propio Supabase client (`createClient()`)
-- No FK JOINs a `auth.users` — enriquecer con query separada a `profiles`
 - Barrel export en `services/index.ts`
+
+**Joins vs query+enrich** — regla refinada:
+
+- Joins relacionales dentro del schema `public.*` son correctos y preferibles cuando RLS lo permite. Ej: `supabase.from("subscriptions").select("*, companies(*)")` es valido.
+- El enrich en query separada es **obligatorio** SOLO cuando cruzas a `auth.users` (u otro schema fuera de `public`). Ej: nunca `select("*, auth_users:user_id(email)")`; en su lugar haz query a la tabla `public.users` (o equivalente) y junta por `user_id` en el service.
+- La regla ESLint `no-restricted-syntax` bloquea literales con `auth.users` como proteccion.
+- Para listas: usa `range(from, to)` + paginacion real. `.limit(N)` solo para listas acotadas por naturaleza (top N, enumeraciones cortas). `.limit(200)` mudo en una lista potencialmente larga oculta datos a partir del item 201.
 
 ### 4.2 Route Protection (proxy.ts)
 
@@ -791,9 +797,10 @@ Orden de operaciones:
 | Auth store | `userId`, `email` | + `role`, `agent` | + `profile`, `theme`, `language` |
 | robots.ts | Allow `/` | Disallow `/` | Allow `/` + sitemap |
 | Dark mode | No | No | Si (CSS vars `:root` + `:root[data-theme=dark]`) |
-| Deps extra | — | `recharts` | `next-intl` |
+| Deps extra | — | `recharts` | `i18next` + `react-i18next` |
 | PWA manifest | No | No | Si (`public/manifest.json`) |
-| i18n | No | No | Via next-intl (opcional, listo para wirear) |
+| i18n | No | No | Via `i18next`/`react-i18next` (cliente); comparte mismos mensajes/placeholders con mobile apps Ignite/Expo |
+| Auth routes `dynamic` | n/a | `force-dynamic` en `(dashboard)/layout.tsx` | `force-dynamic` en `(app)/layout.tsx` |
 
 Si el proyecto destino es un monorepo con `@aldia/shared-tokens` / `@aldia/shared-i18n`, los presets pueden consumir esos packages (o usar fallback local). Eso es decision del PR de la app concreta.
 
@@ -854,14 +861,34 @@ Es el comando canonico para validar conformancia con el SPEC antes de un PR o tr
 - `init-script-check` matrix sobre `[none, admin, consumer]`: ejecuta el init con env prompts vacios, verifica presencia de archivos base y especificos por preset, corre `doctor` contra el proyecto generado.
 - `init-script-env-prompts`: ejecuta el init con prompts de Supabase rellenados y verifica que `.env.local` contiene las tres variables esperadas.
 
-## 12. Checklist de conformidad
+## 12. Autenticacion SSR: default dynamic
+
+`proxy.ts` refresca tokens y decide redirects, pero Next 16 dice explicitamente que no debe ser la unica capa de authz. El riesgo real es que un Server Component cacheado sirva HTML o fetch data del usuario A al usuario B.
+
+### 12.1 Regla
+
+- Layouts de route groups autenticados (`(app)/`, `(dashboard)/`, `(user)/`) declaran `export const dynamic = "force-dynamic"` al nivel del layout. Eso propaga a todas las paginas/loading/error descendientes sin que cada una lo repita.
+- Cualquier `fetch()` o consulta Supabase que lea data scoped al usuario corre con `cache: "no-store"` (en fetch) o dentro de un Server Component dinamico.
+- Prohibido `export const dynamic = "force-static"` o `"static"` en archivos bajo esos route groups. `scripts/check-spec.sh` lo bloquea.
+
+### 12.2 Excepciones
+
+- Paginas publicas (landing, /legal, /blog, etc.) viven fuera del route group autenticado (tipicamente en `(public)/`) y si pueden ser estaticas.
+- Si una pagina autenticada necesita SSG (raro), muévela fuera del grupo y autentica manualmente en el handler.
+
+### 12.3 Por que layout y no archivo-por-archivo
+
+Poner `dynamic = "force-dynamic"` en cada `page.tsx` es ruidoso y facil de olvidar. El layout es el choke point: un solo lugar define el contrato, y check-spec detecta overrides accidentales.
+
+## 13. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores
 - [ ] Componentes UI usan cva + cn pattern
 - [ ] No colores hardcodeados — solo design tokens
 - [ ] Services como objetos, no clases
-- [ ] No FK JOINs a auth.users
+- [ ] No FK JOINs a `auth.users` (joins en `public.*` si estan OK)
+- [ ] Route groups autenticados declaran `dynamic = "force-dynamic"` en su layout
 - [ ] TanStack Query para server state, Zustand para client state
 - [ ] proxy.ts (no middleware.ts)
 - [ ] Tests unitarios con Vitest
