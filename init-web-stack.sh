@@ -1,7 +1,7 @@
 #!/bin/bash
-# Web Stack Template Initializer v1.5
-# Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh)
-# Or from cloned repo: ./init-web-stack.sh [target-dir]
+# Web Stack Template Initializer v1.6
+# Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh) [target-dir] [--preset=admin|consumer|none]
+# Or from cloned repo: ./init-web-stack.sh [target-dir] [--preset=admin|consumer|none]
 
 set -e
 
@@ -24,8 +24,26 @@ TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKER_START="<!-- WEB-STACK-START -->"
 MARKER_END="<!-- WEB-STACK-END -->"
 
-# Target directory for web app (default: web/)
-WEB_DIR="${1:-web}"
+# Parse args: positional target dir + optional --preset flag
+WEB_DIR="web"
+PRESET="none"
+for arg in "$@"; do
+    case "$arg" in
+        --preset=*) PRESET="${arg#--preset=}" ;;
+        --*) echo "Unknown flag: $arg"; exit 1 ;;
+        *) WEB_DIR="$arg" ;;
+    esac
+done
+
+case "$PRESET" in
+    admin|consumer|none) ;;
+    *) echo "Error: --preset must be admin, consumer, or none (got: $PRESET)."; exit 1 ;;
+esac
+
+if [ "$PRESET" != "none" ] && [ ! -d "$TEMPLATE_DIR/presets/$PRESET" ]; then
+    echo "Error: preset '$PRESET' not found at $TEMPLATE_DIR/presets/$PRESET"
+    exit 1
+fi
 
 # Copy template contents into $WEB_DIR excluding dev artifacts.
 # Uses tar to preserve dotfiles and skip node_modules / build outputs.
@@ -44,10 +62,60 @@ copy_template_clean() {
         -cf - .) | (cd "$WEB_DIR" && tar -xf -)
 }
 
-echo "Web Stack Template v1.5 (linting + hooks)"
+echo "Web Stack Template v1.6 (presets)"
 echo "Project: $PROJECT_NAME"
 echo "Target:  $WEB_DIR/"
+echo "Preset:  $PRESET"
 echo ""
+
+# Apply a preset overlay on top of the already-copied core template.
+# - Copies files from presets/<name>/{src,public} into $WEB_DIR (tar-based, skips node_modules etc.)
+# - Merges package.json.extra into $WEB_DIR/package.json via Node
+# - Appends globals.css.extra to $WEB_DIR/src/app/globals.css
+apply_preset() {
+    local preset_name="$1"
+    local preset_dir="$TEMPLATE_DIR/presets/$preset_name"
+
+    # Overlay src/ and public/ if present
+    for overlay in src public; do
+        if [ -d "$preset_dir/$overlay" ]; then
+            (cd "$preset_dir" && tar \
+                --exclude=node_modules \
+                --exclude=.next \
+                --exclude=.DS_Store \
+                -cf - "$overlay") | (cd "$WEB_DIR" && tar -xf -)
+        fi
+    done
+
+    # Merge package.json.extra (deps + devDeps)
+    if [ -f "$preset_dir/package.json.extra" ]; then
+        node -e "
+            const fs = require('fs');
+            const base = JSON.parse(fs.readFileSync('$WEB_DIR/package.json', 'utf8'));
+            const extra = JSON.parse(fs.readFileSync('$preset_dir/package.json.extra', 'utf8'));
+            for (const key of Object.keys(extra)) {
+                base[key] = Object.assign({}, base[key] || {}, extra[key]);
+            }
+            for (const deps of ['dependencies', 'devDependencies']) {
+                if (base[deps]) {
+                    base[deps] = Object.fromEntries(Object.entries(base[deps]).sort());
+                }
+            }
+            fs.writeFileSync('$WEB_DIR/package.json', JSON.stringify(base, null, 2) + '\n');
+        "
+    fi
+
+    # Append globals.css.extra
+    if [ -f "$preset_dir/globals.css.extra" ]; then
+        local globals="$WEB_DIR/src/app/globals.css"
+        if [ -f "$globals" ]; then
+            printf '\n' >> "$globals"
+            cat "$preset_dir/globals.css.extra" >> "$globals"
+        fi
+    fi
+
+    echo "Applied preset: $preset_name"
+}
 
 # ============================================================
 # STEP 1: Copy template files
@@ -107,6 +175,14 @@ else
 fi
 
 # ============================================================
+# STEP 1b: Apply preset overlay (if requested)
+# ============================================================
+
+if [ "$PRESET" != "none" ]; then
+    apply_preset "$PRESET"
+fi
+
+# ============================================================
 # STEP 2: Replace placeholders
 # ============================================================
 
@@ -123,11 +199,19 @@ APP_DESC="${APP_DESC:-A web application}"
 # Slugify project name for package.json
 PKG_NAME=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 
-# Replace placeholders
-find "$WEB_DIR/src" -type f -name "*.tsx" -o -name "*.ts" | while read -r f; do
+# Replace placeholders in source files (.ts/.tsx under src/)
+find "$WEB_DIR/src" -type f \( -name "*.tsx" -o -name "*.ts" \) | while read -r f; do
     sed -i "s/__APP_TITLE__/$APP_TITLE/g" "$f"
     sed -i "s/__APP_DESCRIPTION__/$APP_DESC/g" "$f"
 done
+
+# Replace placeholders in public/ assets that may reference them (PWA manifest, etc.)
+if [ -d "$WEB_DIR/public" ]; then
+    find "$WEB_DIR/public" -type f \( -name "*.json" -o -name "*.webmanifest" -o -name "*.html" \) | while read -r f; do
+        sed -i "s/__APP_TITLE__/$APP_TITLE/g" "$f"
+        sed -i "s/__APP_DESCRIPTION__/$APP_DESC/g" "$f"
+    done
+fi
 
 sed -i "s/__PROJECT_NAME__/$PKG_NAME/g" "$WEB_DIR/package.json"
 if [ -f "$WEB_DIR/package-lock.json" ]; then
@@ -197,7 +281,11 @@ read -p "Install npm dependencies now? [y/N] " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     cd "$WEB_DIR"
-    if [ -f "package-lock.json" ]; then
+    # If a preset added deps, the committed lockfile is stale; regenerate it.
+    if [ "$PRESET" != "none" ]; then
+        npm install
+        echo "Note: lockfile regenerated because preset '$PRESET' added deps. Commit package-lock.json in your first PR."
+    elif [ -f "package-lock.json" ]; then
         npm ci
     else
         npm install
@@ -206,7 +294,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     cd "$PROJECT_DIR"
     echo "Dependencies installed."
 else
-    echo "Skipped. Run 'cd $WEB_DIR && npm ci' when ready."
+    if [ "$PRESET" != "none" ]; then
+        echo "Skipped. Run 'cd $WEB_DIR && npm install' (preset added deps, lockfile is stale)."
+    else
+        echo "Skipped. Run 'cd $WEB_DIR && npm ci' when ready."
+    fi
 fi
 
 # ============================================================

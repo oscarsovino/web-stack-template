@@ -51,6 +51,10 @@ jobs:
   init-script-check:
     name: init-web-stack.sh smoke test
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [none, admin, consumer]
     steps:
       - uses: actions/checkout@v4
 
@@ -59,32 +63,60 @@ jobs:
         with:
           node-version-file: template/.nvmrc
 
-      - name: Run init script non-interactively
+      - name: Run init script non-interactively (${{ matrix.preset }})
         run: |
-          mkdir -p /tmp/smoke-project
-          cd /tmp/smoke-project
-          printf "Smoke App\nSmoke description\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web
+          mkdir -p /tmp/smoke-${{ matrix.preset }}
+          cd /tmp/smoke-${{ matrix.preset }}
+          printf "Smoke App\nSmoke description\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web --preset=${{ matrix.preset }}
 
-      - name: Verify init produced expected files
+      - name: Verify base files in all variants
         run: |
-          test -f /tmp/smoke-project/web/package.json
-          test -f /tmp/smoke-project/web/package-lock.json
-          test -f /tmp/smoke-project/web/.nvmrc
-          test -f /tmp/smoke-project/web/.npmrc
-          test -f /tmp/smoke-project/web/.prettierrc.json
-          test -f /tmp/smoke-project/web/.prettierignore
-          test -f /tmp/smoke-project/web/.husky/pre-commit
-          test -x /tmp/smoke-project/web/scripts/check-spec.sh
-          test -f /tmp/smoke-project/web/src/lib/env.ts
-          test -f /tmp/smoke-project/web/src/app/error.tsx
-          test -f /tmp/smoke-project/web/src/app/loading.tsx
-          grep -q '"name": "smoke-project"' /tmp/smoke-project/web/package.json
-          ! grep -q '"\^' /tmp/smoke-project/web/package.json
+          project=/tmp/smoke-${{ matrix.preset }}/web
+          test -f "$project/package.json"
+          test -f "$project/package-lock.json"
+          test -f "$project/.nvmrc"
+          test -f "$project/.npmrc"
+          test -f "$project/.prettierrc.json"
+          test -f "$project/.prettierignore"
+          test -f "$project/.husky/pre-commit"
+          test -x "$project/scripts/check-spec.sh"
+          test -f "$project/src/lib/env.ts"
+          test -f "$project/src/app/error.tsx"
+          test -f "$project/src/app/loading.tsx"
+          grep -q '"name": "smoke-' "$project/package.json"
+          ! grep -q '"\^' "$project/package.json"
 
-      - name: Verify generated project passes all checks (as a downstream user would)
+      - name: Verify consumer preset overlay
+        if: matrix.preset == 'consumer'
         run: |
-          cd /tmp/smoke-project/web
-          npm ci
+          project=/tmp/smoke-consumer/web
+          test -f "$project/src/app/(app)/layout.tsx"
+          test -f "$project/public/manifest.json"
+          test -f "$project/src/lib/theme/theme-provider.tsx"
+          grep -q '"next-intl"' "$project/package.json"
+          grep -q 'data-theme="dark"' "$project/src/app/globals.css"
+          grep -q '"name": "Smoke App"' "$project/public/manifest.json"
+
+      - name: Verify admin preset overlay
+        if: matrix.preset == 'admin'
+        run: |
+          project=/tmp/smoke-admin/web
+          test -f "$project/src/app/(dashboard)/layout.tsx"
+          grep -q '"recharts"' "$project/package.json"
+          grep -q 'disallow' "$project/src/app/robots.ts"
+
+      - name: Install (strict for none, flexible for presets)
+        run: |
+          cd /tmp/smoke-${{ matrix.preset }}/web
+          if [ "${{ matrix.preset }}" = "none" ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run full downstream suite
+        run: |
+          cd /tmp/smoke-${{ matrix.preset }}/web
           npm run typecheck
           npm run format:check
           npm run lint
