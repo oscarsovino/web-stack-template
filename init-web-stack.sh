@@ -1,9 +1,22 @@
 #!/bin/bash
-# Web Stack Template Initializer v1.0
+# Web Stack Template Initializer v1.3
 # Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh)
 # Or from cloned repo: ./init-web-stack.sh [target-dir]
 
 set -e
+
+# Require Node 22.x so the generated project matches the pinned engines field
+if command -v node >/dev/null 2>&1; then
+    NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
+    if [ "$NODE_MAJOR" != "22" ]; then
+        echo "Error: Node 22.x required (found $(node --version))."
+        echo "Install via nvm: nvm install 22 && nvm use 22"
+        exit 1
+    fi
+else
+    echo "Error: node not found in PATH."
+    exit 1
+fi
 
 PROJECT_DIR=$(pwd)
 PROJECT_NAME=$(basename "$PROJECT_DIR")
@@ -14,7 +27,24 @@ MARKER_END="<!-- WEB-STACK-END -->"
 # Target directory for web app (default: web/)
 WEB_DIR="${1:-web}"
 
-echo "Web Stack Template v1.0"
+# Copy template contents into $WEB_DIR excluding dev artifacts.
+# Uses tar to preserve dotfiles and skip node_modules / build outputs.
+copy_template_clean() {
+    (cd "$TEMPLATE_DIR/template" && tar \
+        --exclude=node_modules \
+        --exclude=.next \
+        --exclude=out \
+        --exclude=coverage \
+        --exclude=playwright-report \
+        --exclude=test-results \
+        --exclude=blob-report \
+        --exclude=tsconfig.tsbuildinfo \
+        --exclude=next-env.d.ts \
+        --exclude=.DS_Store \
+        -cf - .) | (cd "$WEB_DIR" && tar -xf -)
+}
+
+echo "Web Stack Template v1.3 (reproducibility)"
 echo "Project: $PROJECT_NAME"
 echo "Target:  $WEB_DIR/"
 echo ""
@@ -57,9 +87,7 @@ if [ -d "$WEB_DIR/src" ]; then
                 mv "$WEB_DIR/.next" "/tmp/web-stack-next-$$"
             fi
             rm -rf "$WEB_DIR/src" "$WEB_DIR/tests" "$WEB_DIR/public"
-            cp -r "$TEMPLATE_DIR/template/"* "$WEB_DIR/"
-            cp "$TEMPLATE_DIR/template/.gitignore" "$WEB_DIR/" 2>/dev/null || true
-            cp "$TEMPLATE_DIR/template/.env.example" "$WEB_DIR/" 2>/dev/null || true
+            copy_template_clean
             if [ -d "/tmp/web-stack-nm-$$" ]; then
                 mv "/tmp/web-stack-nm-$$" "$WEB_DIR/node_modules"
             fi
@@ -74,9 +102,7 @@ if [ -d "$WEB_DIR/src" ]; then
 else
     echo "Creating $WEB_DIR/ from template..."
     mkdir -p "$WEB_DIR"
-    cp -r "$TEMPLATE_DIR/template/"* "$WEB_DIR/"
-    cp "$TEMPLATE_DIR/template/.gitignore" "$WEB_DIR/" 2>/dev/null || true
-    cp "$TEMPLATE_DIR/template/.env.example" "$WEB_DIR/" 2>/dev/null || true
+    copy_template_clean
     echo "Done."
 fi
 
@@ -104,6 +130,9 @@ find "$WEB_DIR/src" -type f -name "*.tsx" -o -name "*.ts" | while read -r f; do
 done
 
 sed -i "s/__PROJECT_NAME__/$PKG_NAME/g" "$WEB_DIR/package.json"
+if [ -f "$WEB_DIR/package-lock.json" ]; then
+    sed -i "s/__PROJECT_NAME__/$PKG_NAME/g" "$WEB_DIR/package-lock.json"
+fi
 
 echo "Configured: $APP_TITLE ($PKG_NAME)"
 
@@ -168,12 +197,16 @@ read -p "Install npm dependencies now? [y/N] " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     cd "$WEB_DIR"
-    npm install
+    if [ -f "package-lock.json" ]; then
+        npm ci
+    else
+        npm install
+    fi
     npx playwright install chromium 2>/dev/null || true
     cd "$PROJECT_DIR"
     echo "Dependencies installed."
 else
-    echo "Skipped. Run 'cd $WEB_DIR && npm install' when ready."
+    echo "Skipped. Run 'cd $WEB_DIR && npm ci' when ready."
 fi
 
 # ============================================================

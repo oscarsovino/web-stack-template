@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  template-checks:
+    name: Template checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: template
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: template/.nvmrc
+          cache: npm
+          cache-dependency-path: template/package-lock.json
+
+      - name: Install dependencies (strict)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+  init-script-check:
+    name: init-web-stack.sh smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: template/.nvmrc
+
+      - name: Run init script non-interactively
+        run: |
+          mkdir -p /tmp/smoke-project
+          cd /tmp/smoke-project
+          printf "Smoke App\nSmoke description\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web
+
+      - name: Verify init produced expected files
+        run: |
+          test -f /tmp/smoke-project/web/package.json
+          test -f /tmp/smoke-project/web/package-lock.json
+          test -f /tmp/smoke-project/web/.nvmrc
+          test -f /tmp/smoke-project/web/.npmrc
+          grep -q '"name": "smoke-project"' /tmp/smoke-project/web/package.json
+          ! grep -q '"\^' /tmp/smoke-project/web/package.json
+
+      - name: Verify lockfile is consumable (npm ci)
+        run: |
+          cd /tmp/smoke-project/web
+          npm ci
