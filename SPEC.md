@@ -1,7 +1,7 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.2.0
-> Fecha: 2026-04-13
+> Version: 1.3.0
+> Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
 ## 1. Objetivo
@@ -624,7 +624,43 @@ SENTRY_PROJECT=
 SENTRY_AUTH_TOKEN=
 ```
 
-## 7. Checklist de conformidad
+## 7. Reproducibilidad
+
+Toda app inicializada desde este template debe ser bit-for-bit reproducible entre maquinas y CI.
+
+### 7.1 Version pinning
+
+- `package.json` usa versiones **exactas** (sin `^` ni `~`). Ningun rango permitido.
+- `package-lock.json` committeado con las versiones resueltas.
+- Nuevas deps se agregan con `npm install --save-exact` (ya forzado via `.npmrc` con `save-exact=true`).
+
+### 7.2 Node y npm
+
+- `.nvmrc` fija la version exacta de Node (22.x minimo, patch tambien pinned).
+- `engines.node` en `package.json` restringe a `>=22.0.0 <23.0.0`.
+- `engines.npm` restringe a `>=10.9.0 <11.0.0`.
+- `packageManager` field fija el gestor exacto (ej: `npm@10.9.4`).
+- `.npmrc` incluye `engine-strict=true` para que `npm ci` falle si el entorno no coincide.
+
+### 7.3 Install strategy
+
+- Desarrollo local: `npm ci` (no `npm install`).
+- El init script detecta si hay `package-lock.json` y usa `npm ci` automaticamente.
+- `npm install` solo cuando se agregan deps nuevas explicitamente.
+
+### 7.4 CI/CD
+
+- Workflow `.github/workflows/ci.yml` en la raiz del repo template.
+- Pasos obligatorios por PR: `npm ci`, `npm run typecheck`, `npm run build`.
+- Tests y lint se agregan en capas posteriores (PR de env/a11y y PR de linting respectivamente).
+- Job adicional: smoke test del `init-web-stack.sh` que verifica que el output es consumible con `npm ci`.
+
+### 7.5 Init script prerequisitos
+
+- Verifica que Node major sea 22 antes de copiar archivos; aborta si no.
+- Copia explicita de archivos dotfile (`.nvmrc`, `.npmrc`, `.env.example`, `.gitignore`) y `package-lock.json` al proyecto destino.
+
+## 8. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores
