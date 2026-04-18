@@ -26,20 +26,8 @@ jobs:
       - name: Install dependencies (strict)
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: SPEC conformance check
-        run: npm run check-spec
-
-      - name: Unit tests
-        run: npm run test
+      - name: Doctor (typecheck + format:check + lint + check-spec + test)
+        run: npm run doctor
 
       - name: Build
         run: npm run build
@@ -63,11 +51,12 @@ jobs:
         with:
           node-version-file: template/.nvmrc
 
-      - name: Run init script non-interactively (${{ matrix.preset }})
+      - name: Run init script non-interactively (${{ matrix.preset }}, empty env)
         run: |
           mkdir -p /tmp/smoke-${{ matrix.preset }}
           cd /tmp/smoke-${{ matrix.preset }}
-          printf "Smoke App\nSmoke description\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web --preset=${{ matrix.preset }}
+          # 6 lines: app title, app desc, supabase url (skip), supabase key (skip), app url (skip), install? (n)
+          printf "Smoke App\nSmoke description\n\n\n\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web --preset=${{ matrix.preset }}
 
       - name: Verify base files in all variants
         run: |
@@ -84,7 +73,10 @@ jobs:
           test -f "$project/src/app/error.tsx"
           test -f "$project/src/app/loading.tsx"
           grep -q '"name": "smoke-' "$project/package.json"
+          grep -q '"doctor"' "$project/package.json"
           ! grep -q '"\^' "$project/package.json"
+          # Empty env prompts -> no .env.local
+          test ! -f "$project/.env.local"
 
       - name: Verify consumer preset overlay
         if: matrix.preset == 'consumer'
@@ -114,11 +106,33 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
-      - name: Run full downstream suite
+      - name: Run doctor against the generated project
         run: |
           cd /tmp/smoke-${{ matrix.preset }}/web
-          npm run typecheck
-          npm run format:check
-          npm run lint
-          npm run check-spec
-          npm run test
+          npm run doctor
+
+  init-script-env-prompts:
+    name: init-web-stack.sh env prompts smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: template/.nvmrc
+
+      - name: Run init with filled env prompts
+        run: |
+          mkdir -p /tmp/smoke-env
+          cd /tmp/smoke-env
+          # 6 lines: title, desc, supabase url, supabase key, app url (default), install? (n)
+          printf "Env App\nEnv desc\nhttps://proj.supabase.co\ntest-anon-key\n\nn\n" | bash "$GITHUB_WORKSPACE/init-web-stack.sh" web --preset=none
+
+      - name: Verify .env.local was written
+        run: |
+          project=/tmp/smoke-env/web
+          test -f "$project/.env.local"
+          grep -q 'NEXT_PUBLIC_SUPABASE_URL=https://proj.supabase.co' "$project/.env.local"
+          grep -q 'NEXT_PUBLIC_SUPABASE_ANON_KEY=test-anon-key' "$project/.env.local"
+          grep -q 'NEXT_PUBLIC_APP_URL=http://localhost:3000' "$project/.env.local"
