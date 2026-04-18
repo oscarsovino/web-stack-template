@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.4.0
+> Version: 1.5.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -697,7 +697,43 @@ Content-Security-Policy con nonces se difiere a un PR posterior porque requiere 
 - `<html lang="...">` obligatorio en layouts raiz y en `global-error.tsx`.
 - Dialog: `role="dialog"`, `aria-modal="true"`, backdrop clickable como `<button>` con `aria-label`, Escape cierra, focus trap queda pendiente para componente de menu-radix o patron futuro.
 
-## 9. Checklist de conformidad
+## 9. Formato, linting y hooks
+
+### 9.1 Prettier
+
+- `prettier` (pinned) formatea todo el repo.
+- Config en `.prettierrc.json`: semi=false, singleQuote=false, printWidth=100, trailingComma=all, arrowParens=always, endOfLine=lf.
+- `.prettierignore` excluye `node_modules`, outputs de build, `package-lock.json`, artefactos TS.
+- Scripts: `format` (escribe) y `format:check` (valida sin tocar). CI ejecuta `format:check`.
+
+### 9.2 ESLint: reglas custom de SPEC
+
+Sobre la base `next/core-web-vitals + next/typescript + eslint-plugin-jsx-a11y (recommended)`, el template aplica:
+
+- `react/no-danger`: `error`. Ningun `dangerouslySetInnerHTML` con contenido de DB (SPEC §4.6).
+- `@typescript-eslint/ban-ts-comment`: `@ts-ignore` y `@ts-nocheck` prohibidos; `@ts-expect-error` solo con descripcion >=10 chars.
+- `no-restricted-syntax`: literales y template literals que contengan `auth.users` disparan error. Obliga a hacer query separada a `profiles` (SPEC §4.1).
+- `eslint-config-prettier/flat` al final para desactivar reglas de formato que pisarian con Prettier.
+
+### 9.3 Conformancia de archivos (scripts/check-spec.sh)
+
+ESLint no puede expresar cleanly ciertos chequeos a nivel archivo. `scripts/check-spec.sh` (ejecutable, llamado via `npm run check-spec`) valida:
+
+- No existe `middleware.ts` en la raiz del proyecto ni en `src/` (Next 16 usa `proxy.ts`).
+- No hay lectura directa de `process.env.NEXT_PUBLIC_*` fuera de `src/lib/env.ts` (SPEC §8.1).
+
+Añade mas chequeos aqui cuando surja un patron que ESLint no cubra.
+
+### 9.4 Pre-commit hooks
+
+- `husky` (pinned) instala hooks via `npm run prepare` (corre automaticamente en `npm install`).
+- `lint-staged` (config en `package.json`) corre sobre archivos staged:
+  - `*.{ts,tsx,js,jsx,mjs}` → `eslint --fix` + `prettier --write`
+  - `*.{json,md,css,yml,yaml}` → `prettier --write`
+- `.husky/pre-commit` ejecuta `lint-staged` y luego `check-spec`. Si alguno falla, el commit aborta.
+- Los hooks solo se instalan si el repo esta inicializado con git; en CI los verificamos ejecutando `npm run lint && npm run format:check && npm run check-spec` directamente.
+
+## 10. Checklist de conformidad
 
 - [ ] TypeScript strict, sin `@ts-ignore`
 - [ ] `eslint` sin errores

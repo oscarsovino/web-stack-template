@@ -31,9 +31,7 @@ describe("env validation", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
     vi.stubEnv("NEXT_PUBLIC_APP_URL", VALID_ENV.NEXT_PUBLIC_APP_URL)
 
-    await expect(() => import("@/lib/env")).rejects.toThrow(
-      /Invalid environment variables/,
-    )
+    await expect(() => import("@/lib/env")).rejects.toThrow(/Invalid environment variables/)
   })
 
   it("throws when a URL is malformed", async () => {
@@ -41,8 +39,6 @@ describe("env validation", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", VALID_ENV.NEXT_PUBLIC_SUPABASE_ANON_KEY)
     vi.stubEnv("NEXT_PUBLIC_APP_URL", VALID_ENV.NEXT_PUBLIC_APP_URL)
 
-    await expect(() => import("@/lib/env")).rejects.toThrow(
-      /NEXT_PUBLIC_SUPABASE_URL/,
-    )
+    await expect(() => import("@/lib/env")).rejects.toThrow(/NEXT_PUBLIC_SUPABASE_URL/)
   })
 })

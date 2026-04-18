@@ -21,8 +21,7 @@ export default function Error({
     >
       <h2 className="text-xl font-semibold">Algo salio mal</h2>
       <p className="text-sm text-gray-600 max-w-md">
-        La pagina no pudo cargarse. Intenta de nuevo; si persiste, reporta el
-        problema.
+        La pagina no pudo cargarse. Intenta de nuevo; si persiste, reporta el problema.
       </p>
       <button
         type="button"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Web Stack Template Initializer v1.4
+# Web Stack Template Initializer v1.5
 # Usage: bash <(curl -s https://raw.githubusercontent.com/oscarsovino/web-stack-template/main/init-web-stack.sh)
 # Or from cloned repo: ./init-web-stack.sh [target-dir]
 
@@ -44,7 +44,7 @@ copy_template_clean() {
         -cf - .) | (cd "$WEB_DIR" && tar -xf -)
 }
 
-echo "Web Stack Template v1.4 (env + security + a11y)"
+echo "Web Stack Template v1.5 (linting + hooks)"
 echo "Project: $PROJECT_NAME"
 echo "Target:  $WEB_DIR/"
 echo ""
