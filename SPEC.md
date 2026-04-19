@@ -1,6 +1,6 @@
 # Web Standard Stack — Especificacion Tecnica
 
-> Version: 1.8.0
+> Version: 1.9.0
 > Fecha: 2026-04-18
 > Validado contra: State of JS 2025, Stack Overflow 2025, mejores practicas 2025-2026
 
@@ -166,7 +166,7 @@ const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
 - `@supabase/ssr` para Next.js App Router
 - Tres clientes: browser (`createBrowserClient`), server (`createServerClient` con cookies), middleware (session refresh)
 - Schema personalizado via `db: { schema: "..." }`
-- No FK JOINs a `auth.users` — siempre queries separadas a tabla `profiles`
+- No FK JOINs a `auth.users` — siempre queries separadas a tabla `public.users` (or your equivalent application-level users table)
 
 **Archivos obligatorios:**
 - `lib/supabase/client.ts` — browser client
@@ -718,7 +718,7 @@ Sobre la base `next/core-web-vitals + next/typescript + eslint-plugin-jsx-a11y (
 
 - `react/no-danger`: `error`. Ningun `dangerouslySetInnerHTML` con contenido de DB (SPEC §4.6).
 - `@typescript-eslint/ban-ts-comment`: `@ts-ignore` y `@ts-nocheck` prohibidos; `@ts-expect-error` solo con descripcion >=10 chars.
-- `no-restricted-syntax`: literales y template literals que contengan `auth.users` disparan error. Obliga a hacer query separada a `profiles` (SPEC §4.1).
+- `no-restricted-syntax`: literales y template literals que contengan `auth.users` disparan error. Obliga a hacer query separada a `public.users` (or your equivalent application-level users table) (SPEC §4.1).
 - `eslint-config-prettier/flat` al final para desactivar reglas de formato que pisarian con Prettier.
 
 ### 9.3 Conformancia de archivos (scripts/check-spec.sh)
@@ -869,7 +869,11 @@ Es el comando canonico para validar conformancia con el SPEC antes de un PR o tr
 
 - Layouts de route groups autenticados (`(app)/`, `(dashboard)/`, `(user)/`) declaran `export const dynamic = "force-dynamic"` al nivel del layout. Eso propaga a todas las paginas/loading/error descendientes sin que cada una lo repita.
 - Cualquier `fetch()` o consulta Supabase que lea data scoped al usuario corre con `cache: "no-store"` (en fetch) o dentro de un Server Component dinamico.
-- Prohibido `export const dynamic = "force-static"` o `"static"` en archivos bajo esos route groups. `scripts/check-spec.sh` lo bloquea.
+- `scripts/check-spec.sh` bloquea bajo esos route groups todo lo siguiente:
+  - `export const dynamic = "force-static"` / `"static"` (override explicito del default dinamico)
+  - `export const revalidate = <numero>` (ISR compartida entre usuarios)
+  - `fetch(..., { cache: "force-cache" })` (cache compartida)
+  - cualquier uso de `unstable_cache` (sus keys no incluyen al usuario por defecto; leak cross-user)
 
 ### 12.2 Excepciones
 

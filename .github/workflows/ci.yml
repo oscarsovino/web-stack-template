@@ -103,23 +103,35 @@ jobs:
           grep -q 'disallow' "$project/src/app/robots.ts"
           grep -q 'force-dynamic' "$project/src/app/(dashboard)/layout.tsx"
 
-      - name: Verify check-spec rejects force-static in auth route groups
+      - name: Verify check-spec rejects forbidden caching patterns in auth route groups
         if: matrix.preset != 'none'
         run: |
           project=/tmp/smoke-${{ matrix.preset }}/web
-          # Pick the right route group per preset.
           if [ "${{ matrix.preset }}" = "consumer" ]; then
-            offender="$project/src/app/(app)/_force-static-probe.tsx"
+            group_dir="$project/src/app/(app)"
           else
-            offender="$project/src/app/(dashboard)/_force-static-probe.tsx"
+            group_dir="$project/src/app/(dashboard)"
           fi
-          printf 'export const dynamic = "force-static"\nexport default function Probe() { return null }\n' > "$offender"
-          if (cd "$project" && npm run check-spec); then
-            echo "FAIL: check-spec should have rejected force-static under the auth route group"
+
+          run_probe() {
+            local name="$1"
+            local body="$2"
+            local offender="$group_dir/_probe-$name.tsx"
+            printf '%s\nexport default function Probe() { return null }\n' "$body" > "$offender"
+            if (cd "$project" && npm run check-spec) >/dev/null 2>&1; then
+              echo "FAIL: check-spec should have rejected probe '$name'"
+              rm -f "$offender"
+              exit 1
+            fi
             rm -f "$offender"
-            exit 1
-          fi
-          rm -f "$offender"
+            echo "probe '$name' correctly rejected"
+          }
+
+          run_probe "force-static"     'export const dynamic = "force-static"'
+          run_probe "static"           'export const dynamic = "static"'
+          run_probe "revalidate"       'export const revalidate = 60'
+          run_probe "force-cache"      'const _ = fetch("/x", { cache: "force-cache" })'
+          run_probe "unstable-cache"   'import { unstable_cache } from "next/cache"'
 
       - name: Install (strict for none, flexible for presets)
         run: |
